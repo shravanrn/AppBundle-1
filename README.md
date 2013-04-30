@@ -7,10 +7,5 @@ Cordova Plugin to refer to files in the bindle with the prefix "app-bundle://" i
         cordova plugin add directory-of-the-AppBundle-plugin
 
 ##Usage
-* To refer to a file in the bundle through an XHR or a script tag
-        <script type="text/javascript" src="app-bundle:///direct/somefile.js"></script>
-* When settings window location or using an anchor tag
-        <a href="app-bundle:///redirect/somefile.html"></a>
-
-## Why direct and redirect?
-On iOS, you can access files saved by the app only if the location is the default app specific location. Thus rather than navigating directly to the location with app-bundle:///direct, you should get redirected to the correct location with app-bundle:///redirect
+* To refer to a file in the bundle
+        app-bundle:///somefile.someext"

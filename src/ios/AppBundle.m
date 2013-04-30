@@ -26,8 +26,7 @@
 - (void)issueNotFoundResponse;
 @end
 
-NSString* const appBundleDirectURLPrefix = @"app-bundle:///direct";
-NSString* const appBundleRedirectURLPrefix = @"app-bundle:///redirect";
+NSString* const appBundlePrefix = @"app-bundle:///";
 static NSString* pathPrefix;
 static UIWebView* uiwebview;
 
@@ -43,8 +42,6 @@ static UIWebView* uiwebview;
         [NSURLProtocol registerClass:[AppBundleURLProtocol class]];
         pathPrefix = [[NSBundle mainBundle] pathForResource:@"cordova.js" ofType:@"" inDirectory:@"www"];
         NSRange range = [pathPrefix rangeOfString:@"/www/"];
-        //trim trailing slash after www
-        range.length--;
         pathPrefix = [[pathPrefix substringToIndex:NSMaxRange(range)] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     }
     return self;
@@ -61,7 +58,7 @@ static UIWebView* uiwebview;
 {
     NSURL* url = [request URL];
     NSString* urlString = [url absoluteString];
-    return [urlString hasPrefix:appBundleRedirectURLPrefix] || [urlString hasPrefix:appBundleDirectURLPrefix];
+    return [urlString hasPrefix:appBundlePrefix];
 }
 
 + (NSURLRequest*)canonicalRequestForRequest:(NSURLRequest*)request
@@ -80,7 +77,7 @@ static UIWebView* uiwebview;
 - (void)issueNSURLResponseForFile:file
 {
     NSURL* url = [[self request] URL];
-    NSString* path = [NSString stringWithFormat:@"%@%@", pathPrefix, file];
+    NSString* path = [NSString stringWithFormat:@"%@/%@", pathPrefix, file];
     FILE* fp = fopen([path UTF8String], "r");
     if (fp) {
         NSURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:url statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
@@ -105,7 +102,7 @@ static UIWebView* uiwebview;
     if([uiwebview isLoading]) {
         [uiwebview stopLoading];
     }
-    NSString *newUrlString = [NSString stringWithFormat:@"file://%@%@", [pathPrefix stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding], file];
+    NSString *newUrlString = [NSString stringWithFormat:@"file://%@/%@", [pathPrefix stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding], file];
     NSURL *newUrl = [NSURL URLWithString:newUrlString];
     NSURLRequest *request = [NSURLRequest requestWithURL:newUrl];
     [uiwebview loadRequest:request];
@@ -115,15 +112,15 @@ static UIWebView* uiwebview;
 {
     NSURL *url = [[self request] URL];
     NSString* urlString = [url absoluteString];
+    NSURL* mainUrl = [[self request] mainDocumentURL];
+    NSString* mainUrlString = [mainUrl absoluteString];
     
-    if([urlString hasPrefix:appBundleRedirectURLPrefix]){
-        NSString* path = [urlString substringFromIndex:appBundleRedirectURLPrefix.length];
+    if([mainUrlString isEqualToString:urlString]){
+        NSString* path = [urlString substringFromIndex:appBundlePrefix.length];
         [self issueRedirectResponseForFile:path];
-    } else if([urlString hasPrefix:appBundleDirectURLPrefix]){
-        NSString* path = [urlString substringFromIndex:appBundleDirectURLPrefix.length];
-        [self issueNSURLResponseForFile:path];
     } else {
-        [self issueNotFoundResponse];
+        NSString* path = [urlString substringFromIndex:appBundlePrefix.length];
+        [self issueNSURLResponseForFile:path];
     }
 }
 
