@@ -8,4 +8,4 @@ Cordova Plugin to refer to files in the bindle with the prefix "app-bundle://" i
 
 ##Usage
 * To refer to a file in the bundle
-        app-bundle:///somefile.someext"
+        app-bundle:///somefile.someext
