@@ -10,7 +10,7 @@
   <name>App Bundle Url's</name>
 
   <platform name="android">
-    <source-file src="src/android/AppBundle.java" />
+    <source-file src="src/android/AppBundle.java" target-dir="org/apache/cordova" />
 
     <config-file target="res/xml/config.xml" parent="/cordova/plugins">
       <plugin name="AppBundle" value="org.apache.cordova.AppBundle">
