@@ -49,6 +49,9 @@ static UIWebView* uiwebview;
 
 @end
 
+// Note the expected behaviour:
+// Top level navigation with url app-bundle:///fileInBundle should make the browser redirect to file:///path_to_app/fileInBundle
+// Resource requests to app-bundle:///fileInBundle should just return the requested data
 #pragma mark AppBundleURLProtocol
 
 @implementation AppBundleURLProtocol
@@ -115,6 +118,10 @@ static UIWebView* uiwebview;
     NSURL* mainUrl = [[self request] mainDocumentURL];
     NSString* mainUrlString = [mainUrl absoluteString];
     
+    // If this is a top level request. The document url is the same as the request Url.
+
+    // If this is a top level request, redirect to the correct file path.
+    // Else just send the data
     if([mainUrlString isEqualToString:urlString]){
         NSString* path = [urlString substringFromIndex:appBundlePrefix.length];
         [self issueRedirectResponseForFile:path];
