@@ -18,19 +18,15 @@
 */
 package org.apache.cordova;
 
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.cordova.api.CallbackContext;
 import org.apache.cordova.api.CordovaInterface;
 import org.apache.cordova.api.CordovaPlugin;
-import org.apache.cordova.FileHelper;
+import org.apache.cordova.api.DataResource;
+import org.apache.cordova.api.DataResourceContext;
 import android.net.Uri;
 import android.util.Log;
-import android.webkit.WebResourceResponse;
 
 public class AppBundle extends CordovaPlugin {
 
@@ -107,44 +103,12 @@ public class AppBundle extends CordovaPlugin {
         }
     }
 
-    private WebResourceResponse getWebResourceResponseForFile(String file) {
-        String mimetype = FileHelper.getMimeType(file, this.cordova);
-        String encoding = null;
-        if (mimetype != null && mimetype.startsWith("text/")) {
-            encoding = "UTF-8";
-        }
-
-        InputStream is = null;
-
-        if(file.startsWith("file:///android_asset/")) {
-            try {
-                String filePath = file.substring("file:///android_asset/".length());
-                filePath = Uri.parse(filePath).getPath();
-                is = this.cordova.getActivity().getAssets().open(filePath);
-            } catch (IOException ioe) {
-                Log.e(LOG_TAG, "Rerouting error: Error reading asset " + file);
-            }
-        } else {
-            String[] parts = file.split("file://", 2);
-            if(parts.length == 2) {
-                String filePath = parts[1];
-                filePath = Uri.parse(filePath).getPath();
-                try {
-                    is = new FileInputStream(filePath);
-                } catch (FileNotFoundException e) {
-                    Log.e(LOG_TAG, "Rerouting error: Error reading file " + file);
-                }
-            }
-        }
-
-        if(is == null) {
+    private RouteParams getChosenParams(String uri){
+        if(uri == null) {
             return null;
         } else {
-            return new WebResourceResponse(mimetype, encoding, is);
+            uri = Uri.parse(uri).toString();
         }
-    }
-
-    private RouteParams getChosenParams(String uri){
         for(int i = rerouteParams.size() - 1; i >= 0; i--){
             RouteParams param = rerouteParams.get(i);
             if(uri.matches(param.matchRegex)){
@@ -157,7 +121,7 @@ public class AppBundle extends CordovaPlugin {
     @Override
     public Object onMessage(String id, Object data) {
         if("onPageStarted".equals(id)){
-            String url = data == null? "":data.toString();
+            String url = data == null? null: data.toString();
             RouteParams params = getChosenParams(url);
             if(params != null && params.redirectToReplacedUrl) {
                 // Top Level Navigation, redirect correctly
@@ -170,14 +134,19 @@ public class AppBundle extends CordovaPlugin {
     }
 
     @Override
-    public WebResourceResponse shouldInterceptRequest(String url) {
-        RouteParams params = getChosenParams(url);
-        if(params != null){
-            // Just send data as we can't tell if this is top level or not.
-            // If this is a top level request, it will get trapped in the onPageStarted event handled above.
-            String newPath = url.replaceAll(params.replaceRegex, params.replacer);
-            return getWebResourceResponseForFile(newPath);
+    public DataResource shouldInterceptDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
+        DataResource ret = null;
+        // From shouldInterceptRequest
+        if(dataResourceContext.isFromBrowser()){
+            String uri = dataResource.getUri().toString();
+            RouteParams params = getChosenParams(uri);
+            if(params != null){
+                // Just send data as we can't tell if this is top level or not.
+                // If this is a top level request, it will get trapped in the onPageStarted event handled above.
+                String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
+                ret = new DataResource(cordova, Uri.parse(newUri));
+            }
         }
-        return null;
+        return ret;
     }
 }
