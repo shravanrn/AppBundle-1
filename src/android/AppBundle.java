@@ -50,7 +50,8 @@ public class AppBundle extends CordovaPlugin {
         }
     }
 
-    private final RouteParams appBundleParams = new RouteParams("^app-bundle:///.*", "^app-bundle:///", "file:///android_asset/www/", true);
+    private final String BUNDLE_PATH = "file:///android_asset/www/";
+    private final RouteParams appBundleParams = new RouteParams("^app-bundle:///.*", "^app-bundle:///", BUNDLE_PATH, true);
     private List<RouteParams> rerouteParams = new ArrayList<RouteParams>();
 
     @Override
@@ -77,9 +78,9 @@ public class AppBundle extends CordovaPlugin {
 
     private void addAlias(CordovaArgs args, CallbackContext callbackContext) {
         try {
-            String sourceUrlMatchRegex = args.getString(0);
-            String sourceUrlReplaceRegex = args.getString(1);
-            String replaceString = args.getString(2);
+            String sourceUrlMatchRegex = args.getString(0).replace("{BUNDLE_WWW}", getRegex(BUNDLE_PATH));
+            String sourceUrlReplaceRegex = args.getString(1).replace("{BUNDLE_WWW}", getRegex(BUNDLE_PATH));
+            String replaceString = args.getString(2).replace("{BUNDLE_WWW}", BUNDLE_PATH);
             boolean redirectToReplacedUrl = args.getBoolean(3);
             if(replaceString.matches(sourceUrlMatchRegex)){
                 callbackContext.error("The replaceString cannot match the match regex. This would lead to recursive replacements.");
@@ -101,6 +102,20 @@ public class AppBundle extends CordovaPlugin {
             callbackContext.error("Could not clear aliases");
             Log.e(LOG_TAG, "Could not clear aliases");
         }
+    }
+
+    private String getRegex(String string){
+        return string.replace("[", "\\[")
+            .replace("\\", "\\\\")
+            .replace("^", "\\^")
+            .replace("$", "\\$")
+            .replace(".", "\\.")
+            .replace("|", "\\|")
+            .replace("?", "\\?")
+            .replace("*", "\\*")
+            .replace("+", "\\+")
+            .replace("(", "\\(")
+            .replace(")", "\\)");
     }
 
     private RouteParams getChosenParams(String uri){
@@ -136,16 +151,13 @@ public class AppBundle extends CordovaPlugin {
     @Override
     public DataResource shouldInterceptDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
         DataResource ret = null;
-        // From shouldInterceptRequest
-        if(dataResourceContext.isFromBrowser()){
-            String uri = dataResource.getUri().toString();
-            RouteParams params = getChosenParams(uri);
-            if(params != null){
-                // Just send data as we can't tell if this is top level or not.
-                // If this is a top level request, it will get trapped in the onPageStarted event handled above.
-                String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
-                ret = new DataResource(cordova, Uri.parse(newUri));
-            }
+        String uri = dataResource.getUri().toString();
+        RouteParams params = getChosenParams(uri);
+        if(params != null){
+            // Just send data as we can't tell if this is top level or not.
+            // If this is a top level request, it will get trapped in the onPageStarted event handled above.
+            String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
+            ret = new DataResource(cordova, Uri.parse(newUri));
         }
         return ret;
     }

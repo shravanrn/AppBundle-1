@@ -10,7 +10,6 @@
   <name>App Bundle Url's</name>
 
   <js-module src="appBundle.js" name="AppBundle">
-    <clobbers target="appBundle" />
   </js-module>
 
   <platform name="android">
