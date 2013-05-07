@@ -6,9 +6,9 @@
  to you under the Apache License, Version 2.0 (the
  "License"); you may not use this file except in compliance
  with the License.  You may obtain a copy of the License at
-
+ 
  http://www.apache.org/licenses/LICENSE-2.0
-
+ 
  Unless required by applicable law or agreed to in writing,
  software distributed under the License is distributed on an
  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
@@ -26,7 +26,9 @@
 
 @interface AppBundle()
 {}
++ (NSString*) insertFileScheme:(NSString*)path;
 - (void) resetMap;
++ (NSString*) getRegex:(NSString*)string;
 @end
 
 @interface RouteParams : NSObject
@@ -37,13 +39,13 @@
 @property (nonatomic, readwrite, strong) NSString* replacer;
 @property (nonatomic, readwrite, assign) BOOL redirectToReplacedUrl;
 - (RouteParams*)initWithMatchRegex:(NSRegularExpression*) matchRegex1 ReplaceRegex:(NSRegularExpression*)replaceRegex1 Replacer:(NSString*) replacer1 ShouldRedirect:(BOOL) redirectToReplacedUrl1;
+
 @end
 
 @interface AppBundleURLProtocol : NSURLProtocol
-+ (RouteParams*) getChosenParams:uriString;
-+ (NSString*) insertFileScheme:path;
-- (void)issueNSURLResponseForFile:file;
-- (void)issueRedirectResponseForFile:file;
++ (RouteParams*) getChosenParams:(NSString*)uriString;
+- (void)issueNSURLResponseForFile:(NSString*)file;
+- (void)issueRedirectResponseForFile:(NSString*)file;
 - (void)issueNotFoundResponse;
 @end
 
@@ -56,6 +58,19 @@ static RouteParams* appBundleParams;
 #pragma mark AppBundle
 
 @implementation AppBundle
+
++ (NSString*) insertFileScheme:(NSString*)path
+{
+    NSRange wholeStringRange = NSMakeRange(0, [path length]);
+    NSRegularExpression* schemeRegex = [NSRegularExpression regularExpressionWithPattern:@"^[0-9a-zA-Z+.-]+:" options:0 error:nil];
+    NSRange range = [schemeRegex rangeOfFirstMatchInString:path options:0 range:wholeStringRange];
+    if(NSEqualRanges(range, NSMakeRange(NSNotFound, 0)))
+    {
+        return [NSString stringWithFormat:@"file://%@", path];
+    }
+    return path;
+}
+
 - (void) resetMap
 {
     NSError *error = NULL;
@@ -64,8 +79,23 @@ static RouteParams* appBundleParams;
     appBundleParams = [[RouteParams alloc] initWithMatchRegex:bundleMatchRegex ReplaceRegex:bundleReplaceRegex Replacer:pathPrefix ShouldRedirect:YES];
     rerouteParams = [[NSMutableArray alloc] init];
     [rerouteParams addObject:appBundleParams];
-
 }
++ (NSString*) getRegex:(NSString*)string
+{
+    string = [string stringByReplacingOccurrencesOfString:@"[" withString:@"\\["];
+    string = [string stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+    string = [string stringByReplacingOccurrencesOfString:@"^" withString:@"\\^"];
+    string = [string stringByReplacingOccurrencesOfString:@"$" withString:@"\\$"];
+    string = [string stringByReplacingOccurrencesOfString:@"." withString:@"\\."];
+    string = [string stringByReplacingOccurrencesOfString:@"|" withString:@"\\|"];
+    string = [string stringByReplacingOccurrencesOfString:@"?" withString:@"\\?"];
+    string = [string stringByReplacingOccurrencesOfString:@"*" withString:@"\\*"];
+    string = [string stringByReplacingOccurrencesOfString:@"+" withString:@"\\+"];
+    string = [string stringByReplacingOccurrencesOfString:@"(" withString:@"\\("];
+    string = [string stringByReplacingOccurrencesOfString:@")" withString:@"\\)"];
+    return string;
+}
+
 - (CDVPlugin*)initWithWebView:(UIWebView*)theWebView
 {
     self = [super initWithWebView:theWebView];
@@ -75,6 +105,7 @@ static RouteParams* appBundleParams;
         pathPrefix = [[NSBundle mainBundle] pathForResource:@"cordova.js" ofType:@"" inDirectory:@"www"];
         NSRange range = [pathPrefix rangeOfString:@"/www/"];
         pathPrefix = [[pathPrefix substringToIndex:NSMaxRange(range)] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        pathPrefix = [[AppBundle insertFileScheme:pathPrefix] stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
         [self resetMap];
     }
     return self;
@@ -85,17 +116,19 @@ static RouteParams* appBundleParams;
 
     @try {
         NSError* error;
-        NSRegularExpression* sourceUrlMatchRegex = [NSRegularExpression regularExpressionWithPattern:[[command.arguments objectAtIndex:0] stringValue] options:0 error:&error];
+        NSString* sourceUrlMatchRegexString = [[command.arguments objectAtIndex:0] stringByReplacingOccurrencesOfString:@"{BUNDLE_WWW}" withString:[AppBundle getRegex:pathPrefix]];
+        NSRegularExpression* sourceUrlMatchRegex = [NSRegularExpression regularExpressionWithPattern:sourceUrlMatchRegexString options:0 error:&error];
         if(error) {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Match regex is invalid"];
             return;
         }
-        NSRegularExpression* sourceUrlReplaceRegex = [NSRegularExpression regularExpressionWithPattern:[[command.arguments objectAtIndex:1] stringValue] options:0 error:&error];
+        NSString* sourceUrlReplaceRegexString = [[command.arguments objectAtIndex:1] stringByReplacingOccurrencesOfString:@"{BUNDLE_WWW}" withString:[AppBundle getRegex:pathPrefix]];
+        NSRegularExpression* sourceUrlReplaceRegex = [NSRegularExpression regularExpressionWithPattern:sourceUrlReplaceRegexString options:0 error:&error];
         if(error) {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Replace regex is invalid"];
             return;
         }
-        NSString* replaceString = [[command.arguments objectAtIndex:2] stringValue];
+        NSString* replaceString = [[command.arguments objectAtIndex:2] stringByReplacingOccurrencesOfString:@"{BUNDLE_WWW}" withString:pathPrefix];
         BOOL redirectToReplacedUrl = [[command.arguments objectAtIndex:3] boolValue];
 
         NSRange wholeStringRange = NSMakeRange(0, [replaceString length]);
@@ -160,10 +193,9 @@ static RouteParams* appBundleParams;
 
 @implementation AppBundleURLProtocol
 
-+ (RouteParams*) getChosenParams:uriString
++ (RouteParams*) getChosenParams:(NSString*)uriString
 {
     NSRange wholeStringRange = NSMakeRange(0, [uriString length]);
-
     for(RouteParams* param in rerouteParams) {
         NSRange rangeOfMatch = [param.matchRegex rangeOfFirstMatchInString:uriString options:0 range:wholeStringRange];
         if (NSEqualRanges(rangeOfMatch, wholeStringRange)) {
@@ -203,20 +235,7 @@ static RouteParams* appBundleParams;
     [[self client] URLProtocolDidFinishLoading:self];
 }
 
-+ (NSString*) insertFileScheme:path
-{
-    NSError* error;
-    NSRange wholeStringRange = NSMakeRange(0, [path length]);
-    NSRegularExpression* schemeRegex = [NSRegularExpression regularExpressionWithPattern:@"^[0-9a-zA-Z+.-]+:" options:0 error:&error];
-    NSRange range = [schemeRegex rangeOfFirstMatchInString:path options:0 range:wholeStringRange];
-    if(NSEqualRanges(range, NSMakeRange(NSNotFound, 0)))
-    {
-        return [NSString stringWithFormat:@"file://%@", path];
-    }
-    return path;
-}
-
-- (void)issueNSURLResponseForFile:file
+- (void)issueNSURLResponseForFile:(NSString*)file
 {
     NSURL* uri = [[self request] URL];
     NSString* uriString = [uri absoluteString];
@@ -224,9 +243,8 @@ static RouteParams* appBundleParams;
     if(params != nil) {
         NSRange wholeStringRange = NSMakeRange(0, [uriString length]);
         NSString* newUrlString = [params.replaceRegex stringByReplacingMatchesInString:uriString options:0 range:wholeStringRange withTemplate:params.replacer];
-        newUrlString = [AppBundleURLProtocol insertFileScheme:newUrlString];
         if([newUrlString hasPrefix:@"file://"]) {
-            NSString* path = [newUrlString substringFromIndex:[@"file://" length]];
+            NSString* path = [[NSURL URLWithString:newUrlString] path];
             FILE* fp = fopen([path UTF8String], "r");
             if (fp) {
                 NSURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:uri statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
@@ -250,7 +268,7 @@ static RouteParams* appBundleParams;
     }
 }
 
-- (void)issueRedirectResponseForFile:uriString
+- (void)issueRedirectResponseForFile:(NSString*)uriString
 {
     RouteParams* params = [AppBundleURLProtocol getChosenParams:uriString];
     if(params != nil && params.redirectToReplacedUrl)
@@ -260,7 +278,6 @@ static RouteParams* appBundleParams;
         }
         NSRange wholeStringRange = NSMakeRange(0, [uriString length]);
         NSString* newUrlString = [params.replaceRegex stringByReplacingMatchesInString:uriString options:0 range:wholeStringRange withTemplate:params.replacer];
-        newUrlString = [AppBundleURLProtocol insertFileScheme:newUrlString];
         NSURL *newUrl = [NSURL URLWithString:newUrlString];
         NSURLRequest *request = [NSURLRequest requestWithURL:newUrl];
         [uiwebview loadRequest:request];
