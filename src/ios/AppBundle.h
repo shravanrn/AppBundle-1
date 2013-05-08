@@ -20,5 +20,6 @@
 #import <Cordova/CDVPlugin.h>
 
 @interface AppBundle : CDVPlugin {}
-
+- (void)addAlias:(CDVInvokedUrlCommand*)command;
+- (void)clearAllAliases:(CDVInvokedUrlCommand*)command;
 @end
