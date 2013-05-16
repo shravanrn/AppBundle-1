@@ -149,7 +149,7 @@ public class AppBundle extends CordovaPlugin {
     }
 
     @Override
-    public DataResource shouldInterceptDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
+    public DataResource handleDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
         DataResource ret = null;
         String uri = dataResource.getUri().toString();
         RouteParams params = getChosenParams(uri);
