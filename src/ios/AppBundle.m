@@ -129,6 +129,7 @@ static RouteParams* appBundleParams;
             return;
         }
         NSString* replaceString = [[command.arguments objectAtIndex:2] stringByReplacingOccurrencesOfString:@"{BUNDLE_WWW}" withString:pathPrefix];
+        replaceString = [replaceString stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
         BOOL redirectToReplacedUrl = [[command.arguments objectAtIndex:3] boolValue];
 
         NSRange wholeStringRange = NSMakeRange(0, [replaceString length]);
@@ -244,7 +245,8 @@ static RouteParams* appBundleParams;
         NSRange wholeStringRange = NSMakeRange(0, [uriString length]);
         NSString* newUrlString = [params.replaceRegex stringByReplacingMatchesInString:uriString options:0 range:wholeStringRange withTemplate:params.replacer];
         if([newUrlString hasPrefix:@"file://"]) {
-            NSString* path = [[NSURL URLWithString:newUrlString] path];
+            NSURL *newUrl = [NSURL URLWithString:newUrlString];
+            NSString* path = [newUrl path];
             FILE* fp = fopen([path UTF8String], "r");
             if (fp) {
                 NSURLResponse *response = [[NSHTTPURLResponse alloc] initWithURL:uri statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:@{}];
