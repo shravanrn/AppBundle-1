@@ -20,6 +20,8 @@ package org.apache.cordova;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
+
 import org.apache.cordova.api.CallbackContext;
 import org.apache.cordova.api.CordovaInterface;
 import org.apache.cordova.api.CordovaPlugin;
@@ -31,11 +33,54 @@ import android.util.Log;
 
 public class AppBundle extends CordovaPlugin {
 
-    // Note the expected behaviour:
-    // Top level navigation with url in the reroute map should make the browser redirect
-    // Resource requests to url in the reroute map should just return the requested data
-    // Note: Recursive replacements are supported
+    /*
+    This plugin allows any uri's that are loaded to be replaced with modified uri's
+    These include uri's being loaded by the browser such as page navigation, script tags, as well as file uris being opened by file api etc.
+    There are 4 parameters here that affect the replacement.
+    The matchRegex, replaceRegex, replacerString, shouldRedirect
 
+    The algorithm operates as follows
+
+    currently loading 'url'
+    if(url matches matchRegex){
+        newUrl = url.replace(replaceRegex, replacerString)
+        if(this is topLevelRequest){
+            stopLoadingUrl()
+            loadUrl(newUrl)
+            return
+        } else {
+            url = newUrl
+        }
+    }
+    continue loading 'url'
+
+    There are some implementation details involved here such as the ability to distinguish between top level requests and other requests.
+    Please see the code for details regarding this.
+
+    There is an array of {matchRegex, replaceRegex, replacerString, shouldRedirect} stored referred to as the reroute map
+
+    "app-bundle:" uri's are absolute uri's that point to your bundle.
+    By default the rerouteMap contains the parameters required to redirect
+        app-bundle:///blah -> file:///android_asset/www/blah
+
+    The rerouteMap can be modified from javascript by calling the addAlias and clearAlias methods
+
+    Recursive replacements are supported by this plugin as well.
+    Consider the reroute map contains
+         1) http://mysite.com/ -> file:///android_asset/www/
+         2) file:///android_asset/www/blah -> file:///storage/www/
+         3) http://mysite.com/ -> http:///mysiteproxy.com/
+         4) http://mysiteproxy.com/ -> http:///mysiteproxy2.com/
+    A request to http://mysite.com/blah should give http:///mysiteproxy2.com/blah
+    Also note that the recursive replacements apply the rules last to first.
+
+    CAVEAT: Recursive replacements to app-bundle: should not occur
+    For example lets say the we have the rerouteParams set up as
+         1) app-bundle:/// -> file:///android_asset/www/
+         2) file:///android_asset/www/ -> file:///storage/www/
+    A request to app-bundle:///blah should give file:///android_asset/www/ NOT file:///storage/www/
+    This requirement is required by the definition of app-bundle: uris.
+    */
     private static final String LOG_TAG = "AppBundle";
     private static final String APP_BUNDLE_REPLACED = "AppBundleReplaced";
 
@@ -55,12 +100,6 @@ public class AppBundle extends CordovaPlugin {
 
     private final String BUNDLE_PATH = "file:///android_asset/www/";
     // Have a default replacement path that redirects app-bundle: uri's to the bundle
-    // Note: We need to special case app-bundle: uri's during redirection
-    // For example lets say the we have the rerouteParams set up as
-    //      1) app-bundle:///blah -> file:///android_asset/www/blah
-    //      2) file:///android_asset/www/blah -> file:///storage/www/blah
-    // We would have app-bundle pointing to a location that is not the bundle due to recursive replacements
-    // This is NOT the desired behavior
     private final RouteParams appBundleParams = new RouteParams("^app-bundle:///.*", "^app-bundle:///", BUNDLE_PATH, true);
     private List<RouteParams> rerouteParams = new ArrayList<RouteParams>();
 
@@ -115,17 +154,7 @@ public class AppBundle extends CordovaPlugin {
     }
 
     private String getRegex(String string){
-        return string.replace("\\", "\\\\")
-            .replace("[", "\\[")
-            .replace("^", "\\^")
-            .replace("$", "\\$")
-            .replace(".", "\\.")
-            .replace("|", "\\|")
-            .replace("?", "\\?")
-            .replace("*", "\\*")
-            .replace("+", "\\+")
-            .replace("(", "\\(")
-            .replace(")", "\\)");
+        return Pattern.quote(string);
     }
 
     private RouteParams getChosenParams(String uri){
@@ -145,16 +174,20 @@ public class AppBundle extends CordovaPlugin {
 
     @Override
     public Object onMessage(String id, Object data) {
+        // Look for top level navigation changes
         if("onPageStarted".equals(id)){
             String url = data == null? null: data.toString();
             RouteParams params = getChosenParams(url);
+            // Check if we need to replace the url
             if(params != null && params.redirectToReplacedUrl) {
                 Uri uri = Uri.parse(url);
+                // Check that the APP_BUNDLE_REPLACED query param doesn't exist.
+                // If it exists this means a previous app-bundle uri was rerouted to 'uri'. So we shouldn't reroute further.
                 if(uri.getQueryParameter(APP_BUNDLE_REPLACED) == null){
-                    // Top Level Navigation, redirect correctly
                     String newPath = url.replaceAll(params.replaceRegex, params.replacer);
-                    //We need to special case app-bundle: uri's
+                    //We need to special case app-bundle: uri's to make sure they aren't redirected when we load the modified url
                     if(params.equals(appBundleParams)){
+                        // Throw in a APP_BUNDLE_REPLACED query parameter
                         Builder builder = Uri.parse(newPath).buildUpon();
                         builder.appendQueryParameter(APP_BUNDLE_REPLACED, "true");
                         newPath = builder.build().toString();
@@ -170,6 +203,8 @@ public class AppBundle extends CordovaPlugin {
     @Override
     public DataResource handleDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
         DataResource ret = null;
+        // Check that the APP_BUNDLE_REPLACED string doesn't exist in the dataResourceContext.
+        // If it exists this means a previous app-bundle uri was replaced to dataResource.uri. So we shouldn't reroute further.
         if(!dataResourceContext.getDataMap().containsKey(APP_BUNDLE_REPLACED)){
             String uri = dataResource.getUri().toString();
             RouteParams params = getChosenParams(uri);
@@ -178,8 +213,9 @@ public class AppBundle extends CordovaPlugin {
                 // If this is a top level request, it will get trapped in the onPageStarted event handled above.
                 String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
                 ret = new DataResource(cordova, Uri.parse(newUri));
-                // We need to special case app-bundle: uri's
+                //We need to special case app-bundle: uri's to make sure they aren't redirected when we load the modified url
                 if(params.equals(appBundleParams)){
+                    // Throw in a APP_BUNDLE_REPLACED data context string
                     dataResourceContext.getDataMap().put(APP_BUNDLE_REPLACED, "");
                 }
             }

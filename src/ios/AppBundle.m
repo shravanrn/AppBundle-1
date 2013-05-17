@@ -18,9 +18,7 @@
  */
 #import "AppBundle.h"
 
-// Note the expected behaviour:
-// Top level navigation with url in the reroute map should make the browser redirect
-// Resource requests to url in the reroute map should just return the requested data
+// Note: See header for details about this plugin's behaviour
 
 #pragma mark declare
 
@@ -82,18 +80,7 @@ static RouteParams* appBundleParams;
 }
 + (NSString*) getRegex:(NSString*)string
 {
-    string = [string stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
-    string = [string stringByReplacingOccurrencesOfString:@"[" withString:@"\\["];
-    string = [string stringByReplacingOccurrencesOfString:@"^" withString:@"\\^"];
-    string = [string stringByReplacingOccurrencesOfString:@"$" withString:@"\\$"];
-    string = [string stringByReplacingOccurrencesOfString:@"." withString:@"\\."];
-    string = [string stringByReplacingOccurrencesOfString:@"|" withString:@"\\|"];
-    string = [string stringByReplacingOccurrencesOfString:@"?" withString:@"\\?"];
-    string = [string stringByReplacingOccurrencesOfString:@"*" withString:@"\\*"];
-    string = [string stringByReplacingOccurrencesOfString:@"+" withString:@"\\+"];
-    string = [string stringByReplacingOccurrencesOfString:@"(" withString:@"\\("];
-    string = [string stringByReplacingOccurrencesOfString:@")" withString:@"\\)"];
-    return string;
+    return [NSRegularExpression escapedPatternForString:string];
 }
 
 - (CDVPlugin*)initWithWebView:(UIWebView*)theWebView
@@ -113,7 +100,6 @@ static RouteParams* appBundleParams;
 - (void)addAlias:(CDVInvokedUrlCommand*)command
 {
     CDVPluginResult* pluginResult = nil;
-
     @try {
         NSError* error;
         NSString* sourceUrlMatchRegexString = [[command.arguments objectAtIndex:0] stringByReplacingOccurrencesOfString:@"{BUNDLE_WWW}" withString:[AppBundle getRegex:pathPrefix]];
@@ -151,7 +137,6 @@ static RouteParams* appBundleParams;
 - (void)clearAllAliases:(CDVInvokedUrlCommand*)command
 {
     CDVPluginResult* pluginResult = nil;
-
     @try {
         [self resetMap];
         pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
