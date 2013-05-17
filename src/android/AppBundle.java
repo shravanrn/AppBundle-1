@@ -26,15 +26,18 @@ import org.apache.cordova.api.CordovaPlugin;
 import org.apache.cordova.api.DataResource;
 import org.apache.cordova.api.DataResourceContext;
 import android.net.Uri;
+import android.net.Uri.Builder;
 import android.util.Log;
 
 public class AppBundle extends CordovaPlugin {
 
-     // Note the expected behaviour:
-     // Top level navigation with url in the reroute map should make the browser redirect
-     // Resource requests to url in the reroute map should just return the requested data
+    // Note the expected behaviour:
+    // Top level navigation with url in the reroute map should make the browser redirect
+    // Resource requests to url in the reroute map should just return the requested data
+    // Note: Recursive replacements are supported
 
-    private final String LOG_TAG = "AppBundle";
+    private static final String LOG_TAG = "AppBundle";
+    private static final String APP_BUNDLE_REPLACED = "AppBundleReplaced";
 
     private static class RouteParams {
         public String matchRegex;
@@ -51,6 +54,13 @@ public class AppBundle extends CordovaPlugin {
     }
 
     private final String BUNDLE_PATH = "file:///android_asset/www/";
+    // Have a default replacement path that redirects app-bundle: uri's to the bundle
+    // Note: We need to special case app-bundle: uri's during redirection
+    // For example lets say the we have the rerouteParams set up as
+    //      1) app-bundle:///blah -> file:///android_asset/www/blah
+    //      2) file:///android_asset/www/blah -> file:///storage/www/blah
+    // We would have app-bundle pointing to a location that is not the bundle due to recursive replacements
+    // This is NOT the desired behavior
     private final RouteParams appBundleParams = new RouteParams("^app-bundle:///.*", "^app-bundle:///", BUNDLE_PATH, true);
     private List<RouteParams> rerouteParams = new ArrayList<RouteParams>();
 
@@ -85,7 +95,7 @@ public class AppBundle extends CordovaPlugin {
             if(replaceString.matches(sourceUrlMatchRegex)){
                 callbackContext.error("The replaceString cannot match the match regex. This would lead to recursive replacements.");
             } else {
-                rerouteParams.add(new RouteParams(sourceUrlReplaceRegex, sourceUrlReplaceRegex, replaceString, redirectToReplacedUrl));
+                rerouteParams.add(new RouteParams(sourceUrlMatchRegex, sourceUrlReplaceRegex, replaceString, redirectToReplacedUrl));
                 callbackContext.success();
             }
         } catch(Exception e) {
@@ -105,8 +115,8 @@ public class AppBundle extends CordovaPlugin {
     }
 
     private String getRegex(String string){
-        return string.replace("[", "\\[")
-            .replace("\\", "\\\\")
+        return string.replace("\\", "\\\\")
+            .replace("[", "\\[")
             .replace("^", "\\^")
             .replace("$", "\\$")
             .replace(".", "\\.")
@@ -139,10 +149,19 @@ public class AppBundle extends CordovaPlugin {
             String url = data == null? null: data.toString();
             RouteParams params = getChosenParams(url);
             if(params != null && params.redirectToReplacedUrl) {
-                // Top Level Navigation, redirect correctly
-                String newPath = url.replaceAll(params.replaceRegex, params.replacer);
-                webView.stopLoading();
-                webView.loadUrl(newPath);
+                Uri uri = Uri.parse(url);
+                if(uri.getQueryParameter(APP_BUNDLE_REPLACED) == null){
+                    // Top Level Navigation, redirect correctly
+                    String newPath = url.replaceAll(params.replaceRegex, params.replacer);
+                    //We need to special case app-bundle: uri's
+                    if(params.equals(appBundleParams)){
+                        Builder builder = Uri.parse(newPath).buildUpon();
+                        builder.appendQueryParameter(APP_BUNDLE_REPLACED, "true");
+                        newPath = builder.build().toString();
+                    }
+                    webView.stopLoading();
+                    webView.loadUrl(newPath);
+                }
             }
         }
         return null;
@@ -151,13 +170,19 @@ public class AppBundle extends CordovaPlugin {
     @Override
     public DataResource handleDataResourceRequest(DataResource dataResource, DataResourceContext dataResourceContext) {
         DataResource ret = null;
-        String uri = dataResource.getUri().toString();
-        RouteParams params = getChosenParams(uri);
-        if(params != null){
-            // Just send data as we can't tell if this is top level or not.
-            // If this is a top level request, it will get trapped in the onPageStarted event handled above.
-            String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
-            ret = new DataResource(cordova, Uri.parse(newUri));
+        if(!dataResourceContext.getDataMap().containsKey(APP_BUNDLE_REPLACED)){
+            String uri = dataResource.getUri().toString();
+            RouteParams params = getChosenParams(uri);
+            if(params != null){
+                // Just send data as we can't tell if this is top level or not.
+                // If this is a top level request, it will get trapped in the onPageStarted event handled above.
+                String newUri = uri.replaceAll(params.replaceRegex, params.replacer);
+                ret = new DataResource(cordova, Uri.parse(newUri));
+                // We need to special case app-bundle: uri's
+                if(params.equals(appBundleParams)){
+                    dataResourceContext.getDataMap().put(APP_BUNDLE_REPLACED, "");
+                }
+            }
         }
         return ret;
     }

@@ -82,8 +82,8 @@ static RouteParams* appBundleParams;
 }
 + (NSString*) getRegex:(NSString*)string
 {
-    string = [string stringByReplacingOccurrencesOfString:@"[" withString:@"\\["];
     string = [string stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+    string = [string stringByReplacingOccurrencesOfString:@"[" withString:@"\\["];
     string = [string stringByReplacingOccurrencesOfString:@"^" withString:@"\\^"];
     string = [string stringByReplacingOccurrencesOfString:@"$" withString:@"\\$"];
     string = [string stringByReplacingOccurrencesOfString:@"." withString:@"\\."];
